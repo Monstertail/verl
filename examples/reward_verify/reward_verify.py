@@ -40,19 +40,35 @@ class CSVVerifier:
         tokenized_responses = self.tokenizer(responses, padding=True, truncation=True, return_tensors="pt")
         
         # Divide dataset into gsm8k (0-1318) and math (1319-6318)
+           # 注意：这里我们需要构造一个拼接后的 attention_mask，
+        # 使其长度等于 prompt + response 的总长度，从而方便 reward_manager 分割
+        gsm8k_prompt_ids = tokenized_inputs["input_ids"][:1319]
+        gsm8k_response_ids = tokenized_responses["input_ids"][:1319]
+        gsm8k_prompt_mask = tokenized_inputs["attention_mask"][:1319]
+        gsm8k_response_mask = tokenized_responses["attention_mask"][:1319]
+        combined_attention_mask = torch.cat([gsm8k_prompt_mask, gsm8k_response_mask], dim=-1)
+        
+        # 构造 gsm8k 的 batch 字典，其中 "prompts" 键保存 prompt 的 token_ids
         gsm8k_inputs = {
-            "input_ids": tokenized_inputs["input_ids"][:1319],
-            "prompts": tokenized_inputs["input_ids"][:1319],  # 添加 "prompts" 键
-            "attention_mask": tokenized_inputs["attention_mask"][:1319],
-            "responses": tokenized_responses["input_ids"][:1319]
-        }
-        math_inputs = {
-            "input_ids": tokenized_inputs["input_ids"][1319:6319],
-            "prompts": tokenized_inputs["input_ids"][1319:6319],  # 同样添加 "prompts"
-            "attention_mask": tokenized_inputs["attention_mask"][1319:6319],
-            "responses": tokenized_responses["input_ids"][1319:6319]
+            "input_ids": gsm8k_prompt_ids,  # 可选，实际使用中可能只用 "prompts"
+            "prompts": gsm8k_prompt_ids,
+            "attention_mask": combined_attention_mask,
+            "responses": gsm8k_response_ids
         }
         
+        # 对于 MATH 数据，同样构造拼接后的 attention_mask
+        math_prompt_ids = tokenized_inputs["input_ids"][1319:6319]
+        math_response_ids = tokenized_responses["input_ids"][1319:6319]
+        math_prompt_mask = tokenized_inputs["attention_mask"][1319:6319]
+        math_response_mask = tokenized_responses["attention_mask"][1319:6319]
+        combined_attention_mask_math = torch.cat([math_prompt_mask, math_response_mask], dim=-1)
+        
+        math_inputs = {
+            "input_ids": math_prompt_ids,
+            "prompts": math_prompt_ids,
+            "attention_mask": combined_attention_mask_math,
+            "responses": math_response_ids
+        }
         # get ground truth 'ground_truth' and source 'data_source'
         # 'openai/gsm8k':1319 datapoints(index 0-1318) 'lighteval/MATH': 5000 datapoints(index 1319-6318)
        # Load ground truth and data source
@@ -168,7 +184,7 @@ def main():
     # Initialize tokenizer and reward function 
     tokenizer =  hf_tokenizer(name_or_path=args.model_path)
     # _default_compute_score, see here: https://github.com/Monstertail/verl/blob/3165d98894ecf97650ebe9f40434a586b54dbc25/verl/utils/reward_score/__init__.py#L17C28-L17C39 
-    val_reward_fn = NaiveRewardManager(tokenizer=tokenizer, num_examine=4000, compute_score=None)  # Replace with actual reward function
+    val_reward_fn = NaiveRewardManager(tokenizer=tokenizer, num_examine=5, compute_score=None)  # Replace with actual reward function
 
     verifier = CSVVerifier(args.csv_path, tokenizer, val_reward_fn)
     verifier.prepare_evaluation()
