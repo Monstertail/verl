@@ -27,13 +27,25 @@ class CSVVerifier:
         '''
         Load CSV and prepare for reward manager: https://github.com/Monstertail/verl/blob/3165d98894ecf97650ebe9f40434a586b54dbc25/docs/preparation/reward_function.rst#rewardmanager
         '''
-        df = pd.read_csv(self.csv_path)
-        
+        # df = pd.read_csv(self.csv_path)
+        df = pd.read_csv(self.csv_path, on_bad_lines='skip', encoding='utf-8', lineterminator="\n")
         
         # extract prompt,response and tokenize to 'input_ids', 'responses'
         # Extract 'prompt' and 'response' columns
-        prompts = df["prompt"].tolist()
-        responses = df["response"].tolist()
+        # Check which column exists and use it
+        if "prompt" in df.columns:
+            prompts = df["prompt"].tolist()
+        elif "input" in df.columns:
+            prompts = df["input"].tolist()
+        else:
+            raise ValueError("Neither 'prompt' nor 'input' column found in the CSV file.")
+
+        if "response" in df.columns:
+            responses = df["response"].tolist()
+        elif "output" in df.columns:
+            responses = df["response"].tolist()
+        else:
+            raise ValueError("'response' column not found in the CSV file.")
 
         # Tokenize both prompts and responses
         
