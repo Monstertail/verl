@@ -36,8 +36,10 @@ class CSVVerifier:
         responses = df["response"].tolist()
 
         # Tokenize both prompts and responses
+        
+        tokenized_responses = self.tokenizer(responses, padding=True, truncation=True, return_tensors="pt") #这里看起来是右填充
+        self.tokenizer.padding_side = "left"  # 确保左填充
         tokenized_inputs = self.tokenizer(prompts, padding=True, truncation=True, return_tensors="pt")
-        tokenized_responses = self.tokenizer(responses, padding=True, truncation=True, return_tensors="pt")
         
         # Divide dataset into gsm8k (0-1318) and math (1319-6318)
            # 注意：这里我们需要构造一个拼接后的 attention_mask，
@@ -100,7 +102,7 @@ class CSVVerifier:
             }
         }
         
-        print("GSM8K test data dictionary:", gsm8k_test_data)
+        # print("GSM8K test data dictionary:", gsm8k_test_data)
         # Convert to DataProto using from_dict()
         self.gsm8k_test_batch = DataProto.from_dict(
             tensors=gsm8k_test_data["batch"],
@@ -151,14 +153,45 @@ class CSVVerifier:
         
         return avg_score
     def evaluate_math(self):
-        pass
+        """
+        使用已加载的 MATH 数据（self.math_test_batch）调用奖励函数进行评估，
+        并打印出平均分和部分样本得分。
+        """
+        # 检查 MATH 数据是否已加载
+        if self.math_test_batch is None:
+            raise ValueError("MATH test batch is not prepared. Please call load_and_process_csv() first.")
+
+        print("Evaluating MATH dataset...")
+
+        # 计算奖励，假设 val_reward_fn 接受 DataProto 并返回一个 reward tensor
+        reward_tensor = self.val_reward_fn(self.math_test_batch)
+
+        # 求和得到每个样本的得分，转到 CPU 并转换为列表
+        scores = reward_tensor.sum(-1).cpu().tolist()
+
+        # 计算平均得分
+        avg_score = np.mean(scores)
+
+        # 可选：输出部分样本的得分和对应的输入文本
+        input_ids = self.math_test_batch.batch.get('input_ids', None)
+        if input_ids is not None:
+            sample_inputs = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in input_ids[:5]]
+        else:
+            sample_inputs = []
+
+        print("MATH Evaluation:")
+        print("Average score:", avg_score)
+        print("Sample inputs:", sample_inputs)
+        print("Sample scores:", scores[:5])
+
+        return avg_score
     
     def evaluate(self):
         # 执行验证
         print("Evaluating GSM8K...")
-        gsm8k_score = self.val_reward_fn(self.gsm8k_test_batch).sum(-1).mean().item()
+        gsm8k_score = self.evaluate_gsm8k()
         print("Evaluating MATH...")
-        math_score = self.val_reward_fn(self.math_test_batch).sum(-1).mean().item()
+        math_score = self.evaluate_math()
         
         return {
             "gsm8k_score": gsm8k_score,
@@ -188,9 +221,11 @@ def main():
 
     verifier = CSVVerifier(args.csv_path, tokenizer, val_reward_fn)
     verifier.prepare_evaluation()
-    # results = verifier.evaluate()
-    # print(f"Validation Results: {results}")
-    verifier.evaluate_gsm8k()
+    results = verifier.evaluate()
+    print(f"Validation Results: {results}")
+    
+    # verifier.evaluate_gsm8k()
+    # verifier.evaluate_math()
 
 if __name__ == "__main__":
     main()
