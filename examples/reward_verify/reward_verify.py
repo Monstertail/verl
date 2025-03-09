@@ -13,7 +13,7 @@ from verl.utils.tokenizer import hf_tokenizer
 # - output score并查看
 
 import os
-
+import json
 class CSVVerifier:
     def __init__(self, csv_path, tokenizer, val_reward_fn):
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -151,6 +151,7 @@ class CSVVerifier:
         # 计算平均得分
         avg_score = np.mean(scores)
         
+        self.save_score_indices_to_jsonl(scores, "gsm8k_score_indices.jsonl")
         # 可选：输出部分样本的得分和对应的输入文本
         input_ids = self.gsm8k_test_batch.batch.get('input_ids', None)
         if input_ids is not None:
@@ -180,7 +181,7 @@ class CSVVerifier:
 
         # 求和得到每个样本的得分，转到 CPU 并转换为列表
         scores = reward_tensor.sum(-1).cpu().tolist()
-
+        self.save_score_indices_to_jsonl(scores, "math_score_indices.jsonl")
         # 计算平均得分
         avg_score = np.mean(scores)
 
@@ -209,6 +210,29 @@ class CSVVerifier:
             "gsm8k_score": gsm8k_score,
             "math_score": math_score
         }
+    @staticmethod
+    def save_score_indices_to_jsonl(scores, file_path="score_indices.jsonl"):
+        """
+        将得分为 0 和 1 的索引分别存入 JSONL 文件。
+
+        参数：
+        - scores (list): 包含所有样本得分的列表（0 或 1）。
+        - file_path (str): JSONL 文件的保存路径（默认为 "score_indices.jsonl"）。
+        """
+
+        zero_indices = [i for i, score in enumerate(scores) if score == 0]
+        one_indices = [i for i, score in enumerate(scores) if score == 1]
+
+        data = {
+            "zero_indices": zero_indices,
+            "one_indices": one_indices
+        }
+
+        with open(file_path, "w") as f:
+            json.dump(data, f)
+            f.write("\n")
+
+        print(f"Saved indices to {file_path}")
     
         
 
